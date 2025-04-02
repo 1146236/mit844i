@@ -1,1 +1,250 @@
-print("Hello, GitHub")
+import json
+import datetime
+import hashlib
+import os
+
+users = {}
+logged_in = None
+
+def hashPassword(password):
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+# Tranzaksiya 
+def trLoad():
+    os.makedirs("db", exist_ok=True) # 'db' qovlugu yoxdursa yaradir
+    with open("db/transaction.txt", 'a+') as f:
+        f.seek(0)
+        return f.read()
+
+def trSave(tr_data):
+    os.makedirs("db", exist_ok=True) # 'db' qovlugu yoxdursa yaradir
+    with open("db/transaction.txt", 'a') as f:
+        f.write(tr_data)
+
+# Hesablar
+def userLoad():
+    os.makedirs("db", exist_ok=True) # 'db' qovlugu yoxdursa yaradir
+
+    global users
+
+    if not os.path.exists("db/session.json"):
+        with open("db/session.json", "w") as f:
+            json.dump({}, f)
+
+    try:
+        with open("db/accounts.json", "r", encoding="utf-8") as f:
+            users = json.load(f)
+    except:
+        users = {}
+
+def userSave(data):
+    os.makedirs("db", exist_ok=True) # 'db' qovlugu yoxdursa yaradir
+
+    with open("db/accounts.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+
+# Yadda qalan giris
+def loadSession():
+    os.makedirs("db", exist_ok=True) # 'db' qovlugu yoxdursa yaradir
+
+    if not os.path.exists("db/session.json"):
+        with open("db/session.json", "w") as f:
+            json.dump({}, f)
+
+    try:
+        with open("db/session.json","r") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return {}
+    
+def saveSession(session_data):
+    os.makedirs("db", exist_ok=True) # 'db' qovlugu yoxdursa yaradir
+
+    with open("db/session.json","w") as f:
+        json.dump(session_data, f, indent=4)
+
+def createAccount():
+    id = len(users) + 1
+    name = input("Name : ")
+
+    password = input("Password : ")
+    while len(password) <= 4:
+        print("Password length must be greater than 4")
+        password = input("Password : ")
+    password = hashPassword(password)
+
+    card_no = input("Card Number : ")
+    while len(card_no) != 4:
+        print("Card no must be 4 digits")
+        card_no = input("Card Number : ")
+
+    user_card_no = []
+    for i in users:
+        user_card_no.append(users[i]["card_no"])
+
+    while card_no in user_card_no:
+        print("This card no already exists")
+        card_no = input("Card Number : ")
+
+    balance = 0
+    log = []
+
+    users[name] = {"id" : id,'password': password,"card_no" : card_no,"balance" : balance,"log" : log}
+    userSave(users)
+
+    print("Account is created")
+    logged_in = name
+    saveSession(logged_in)
+
+def signIn():
+    global logged_in
+    global name
+
+    name = input("Name : ")
+    for i in users:     
+        while name not in users:
+            print("Name not found")
+            name = input("Name : ")
+
+    password = input("Password : ")
+    password = hashPassword(password)  
+
+    while password not in users[name]["password"]:
+        print("Password is incorrect")
+        password = input("Password : ")
+
+    """card_no = input("Card Number : ")
+    while card_no not in users[name]["card_no"]:
+        print("Card number is incorrect")
+        card_no = input("Card Number : ")"""
+
+    logged_in = name
+    saveSession(logged_in)
+
+while True:
+    userLoad()
+    logged_in = loadSession()
+    
+    # Eger hesab yaddasda deyilse program bu hisseden baslayir.
+    if not logged_in:
+        print("\nHello, Welcome")
+        print("[1] Create account")
+        print("[2] Sign in")
+        print("[3] Exit")
+
+        choice = input("Select : ")
+        if choice == "1":
+            createAccount() 
+        if choice == "2":
+            signIn()
+        if choice == "3":
+            break
+
+    # Eger hesab yaddasdadirsa program bu hisseden baslayir.
+    else:
+        name = logged_in
+        while True:
+            print(f"\nLogged in with the name {logged_in}")
+            print("[0] Admin panel")
+            print("[1] Deposit")
+            print("[2] Withdraw")
+            print("[3] Send money")
+            print("[4] View balance")
+            print("[5] Transaction history")
+            print("[6] Reset password")
+            print("[7] Log out")
+
+            choice = input("Select : ")
+
+            if choice == "0":
+                pass
+
+            if choice == "1":
+                try:
+                    amount = float(input("Amount: "))
+                except ValueError:
+                    print("Invalid amount!")  
+                if amount > 0:
+                    users[name]["balance"] += amount
+                else:
+                    print("Amount must be greater than 0!")
+                    break
+
+                userSave(users)
+                transaction = f'Date : {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | Name : {name} | ID : {users[name]["card_no"]} | Status : {amount} manat loaded in the account\n'
+                trSave(transaction)
+
+            if choice == "2":
+                try:
+                    amount = float(input("Amount: "))
+                except ValueError:
+                    print("Invalid amount!")
+
+                while amount > users[name]["balance"] and amount > 0:
+                    print("Insufficient balance or invalid amount")
+                    amount = float(input("Amount : "))
+                else:
+                    users[name]["balance"] -= amount
+                    userSave(users)
+                    transaction = f'Date : {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | Name : {name} | ID : {users[name]["card_no"]} | Status : {amount} manat withdrawn from the account\n'
+                    trSave(transaction)
+
+            if choice == "3":
+                card_no = input("Card no : ")       
+                cardHave = False  # Programin dovure girib-girmediyini yoxlamaq ucun yaradilan bool deyiseni
+                for i in users:
+                    if users[i]["card_no"] == card_no:
+                        print(f"Is this the person you want to send money to? {i}")
+                        choice = input("Yes [1] | No [2] : ")
+                        if choice == "1":
+                            try:
+                                amount = float(input("Amount: "))
+                            except ValueError:
+                                print("Invalid amount!")
+                                break
+
+                            while amount > users[name]["balance"] and amount > 0:
+                                print(f"Insufficient balance.Your balance : {users[name]["balance"]}")
+                                choice = input("Continue [1] | Go back [2] : ")
+                                if choice == "1":                                    
+                                    amount = float(input("Amount : "))
+                                else:
+                                    break
+
+                            users[logged_in]["balance"] -= amount
+                            users[i]["balance"] += amount
+                            userSave(users)
+                            cardHave = True
+
+                            if cardHave is True:
+                                print("Process successful : Money sent.")
+                                # Tranzakisiya pulu gonderen ve alan olmaqla 2 hesapdada qeyd olunur
+                                transaction = f'Date : {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | Name : {name} | ID : {users[name]["card_no"]} | Status : {amount} manat sent from account\n'
+                                transaction += f'Date : {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | Name : {i} | ID : {users[i]["card_no"]} | Status : {amount} manat transferred to account\n'
+                                trSave(transaction)
+                            else:
+                                print("Process unsuccessful : Card no not found.")
+
+                        if choice == "2":
+                            print("Process unsuccessful")
+
+            if choice == "4":
+                print(f"Your balance : {users[name]["balance"]}")
+
+            if choice == "5":
+                print(trLoad())
+
+            if choice == "6":
+                password = input("Enter new password  : ") 
+                while len(password) <= 4:
+                    print("Password length must be greater than 4")
+                    password = input("Enter new password : ")
+                password = hashPassword(password)   
+                users[name]["password"] = password
+                print("Your password changed")
+                userSave(users)
+
+            if choice == "7":
+                logged_in = None
+                saveSession(logged_in)
+                break
